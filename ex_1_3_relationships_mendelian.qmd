@@ -1,0 +1,266 @@
+---
+title: "Exercise 4: Visualizing Mendelian Sampling"
+format: html
+---
+
+## Introduction
+
+In this exercise, we will explore the fundamental difference between pedigree relationships (**A**) and genomic relationships (**G**).
+
+-   The **Pedigree Relationship (B)** is an *expectation*. It tells us the average amount of the genome two individuals are expected to share based on their family tree. For full-sibs, this is always 50%.
+
+-   The **Genomic Relationship (G)** is *realized*. It measures the actual proportion of the genome (that we've measured with markers) that two individuals *actually* share.
+
+Due to the random "shuffling" of genes during meiosis (the creation of eggs and sperm), some full-sibs will share more than 50% of their alleles, and some will share less. This random variation around the expectation is called **Mendelian Sampling**.
+
+Our goal is to simulate this process, calculate both **A** and **G** for a family, and see Mendelian sampling in action.
+
+## Setup
+
+First, we need to load the `pedigreemm` package, which helps us calculate the **A** matrix from a pedigree.
+
+```{r}
+# If you don't have pedigreemm, uncomment the line below to install it
+# install.packages("pedigreemm")
+library(pedigreemm)
+```
+
+## Part 1: Define Pedigree & Calculate A (Expected)
+
+We'll start by defining a simple family: two parents (Founders) and 10 of their offspring (full-sibs).
+
+```{r}
+# 1. Define a simple pedigree:
+#    Animals 1 and 2 are founders (parents)
+#    Animals 3-12 are full-sibs, offspring of 1 and 2
+ped_df <- data.frame(
+  Animal = 1:12,
+  Sire = c(0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1),
+  Dam = c(0, 0, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2)
+)
+
+print(ped_df)
+```
+
+```{r}
+# 2. Create the pedigree object
+ped <- pedigree(ped_df$Sire, ped_df$Dam, ped_df$Animal)
+
+# 3. Calculate the A matrix (Additive Relationship Matrix)
+A <- as.matrix(getA(ped))
+
+# Let's look at the EXPECTED relationship between two sibs (3 and 4)
+# The A matrix uses animal IDs as names
+print(paste("Expected relationship (A) between sibs 3 and 4:", A["3", "4"]))
+```
+
+As expected, the pedigree tells us that sibs 3 and 4 share 50% of their genes *on average*. You will find this is true for *any* two of the sibs.
+
+## Part 2: Function to Calculate G (Realized)
+
+Next, we need a function to calculate the \$G\$ matrix. This is based on your script and corrected according to VanRaden (2008), Method 1. It takes a genotype matrix \$M\$ (coded -1, 0, 1) and returns the genomic relationship matrix.
+
+```{r}
+# This function calculates G using VanRaden (2008), Method 1
+# M = Genotype matrix for *all* animals (n x m) coded as -1, 0, 1
+# p_freqs = A vector (length m) of the 'p' (allele 1) frequencies 
+#           for the base population.
+calculate_G_vanraden <- function(M, p_freqs) {
+  
+  # Get dimensions of the full M matrix
+  n <- nrow(M)
+  m <- ncol(M)
+  
+  # We use the provided p_freqs as the "true" frequencies
+  freq <- p_freqs
+  
+  # Calculate P matrix (2 * (p - 0.5))
+  P_vec <- 2 * (freq - 0.5)
+  # Create the full P matrix for all 'n' animals
+  P <- matrix(P_vec, nrow = n, ncol = m, byrow = TRUE)
+  
+  # Calculate Z matrix (M centered by P)
+  # We center the *full* M matrix using the *base* frequencies
+  Z <- M - P
+  
+  # Calculate G
+  G_numerator <- Z %*% t(Z)
+  
+  # Denominator = 2 * sum(p * (1-p))
+  # We use the *base* frequencies for the denominator as well
+  G_denominator <- 2 * sum(freq * (1 - freq))
+  
+  G <- G_numerator / G_denominator
+  
+  return(G)
+}
+
+
+```
+
+## Part 3: Simulate Genotypes & Calculate G
+
+Now for the fun part. We will simulate the "real" genotypes for this family.
+
+1.  Create random genotypes for the two parents.
+
+2.  For each of the 10 offspring, we will simulate meiosis by randomly "dropping" one gamete from the sire and one from the dam *for every single marker*.
+
+3.  We'll combine these into one big genotype matrix \$M\$ and use our function to calculate \$G\$.
+
+```{r}
+# 1. Set simulation parameters
+n_animals <- 12
+m_markers <- 2000 # Number of markers to simulate
+
+# 2. Simulate random genotypes for the two parents (Founders)
+#    This is a more biologically realistic approach.
+#    We will assume each marker has a random allele frequency (p)
+#    and the parents are sampled from a population in HWE for that marker.
+set.seed(42) # Set a seed for reproducible results
+
+# 2a. Simulate random allele frequencies (p) for each marker
+#     We'll keep them away from 0 or 1 for this example (e.g., 0.1 to 0.9)
+p_freqs <- runif(m_markers, 0.1, 0.9)
+
+# 2b. Create an empty M_parents matrix
+M_parents <- matrix(nrow = 2, ncol = m_markers)
+
+# 2c. Fill the matrix by sampling genotypes based on HWE probabilities
+for (j in 1:m_markers) {
+  p <- p_freqs[j] # Get allele freq for this marker
+  
+  # Define HWE probabilities: P(aa), P(Aa), P(AA)
+  # Corresponds to genotypes:    -1,      0,      1
+  hwe_probs <- c( (1-p)^2,   2*p*(1-p),   p^2 )
+  
+  # Sample genotypes for both parents based on these probabilities
+  M_parents[1, j] <- sample(c(-1, 0, 1), 1, prob = hwe_probs)
+  M_parents[2, j] <- sample(c(-1, 0, 1), 1, prob = hwe_probs)
+}
+
+
+# show first 10 columns of the parents' genotypes
+print(M_parents[,1:10])
+```
+
+```{r}
+# 3. Simulate genotypes for the 10 offspring
+n_offspring <- 10
+M_offspring <- matrix(nrow = n_offspring, ncol = m_markers)
+
+# This loop simulates Mendelian sampling
+for (i in 1:n_offspring) { # For each offspring
+  for (j in 1:m_markers) { # For each marker
+    
+    # Get parental genotypes
+    P1_geno <- M_parents[1, j]
+    P2_geno <- M_parents[2, j]
+    
+    # --- Simulate gamete from Parent 1 (Sire) ---
+    if (P1_geno == 1) {       # 'AA'
+      gamete1 <- 0.5
+    } else if (P1_geno == -1) { # 'aa'
+      gamete1 <- -0.5
+    } else {                  # 'Aa'
+      gamete1 <- sample(c(0.5, -0.5), 1) # <-- This is the random part!
+    }
+    
+    # --- Simulate gamete from Parent 2 (Dam) ---
+    if (P2_geno == 1) {       # 'AA'
+      gamete2 <- 0.5
+    } else if (P2_geno == -1) { # 'aa'
+      gamete2 <- -0.5
+    } else {                  # 'Aa'
+      gamete2 <- sample(c(0.5, -0.5), 1) # <-- This is the random part!
+    }
+    
+    # Offspring genotype is the sum of gametes
+    M_offspring[i, j] <- gamete1 + gamete2
+  }
+}
+
+# print genotypes of the offspring
+print("Offspring genotypes (first 10 markers, first 5 offspring):")
+print(M_offspring[1:5,1:10])
+```
+
+```{r}
+# 4. Combine parent and offspring genotypes into one matrix
+M_all <- rbind(M_parents, M_offspring)
+rownames(M_all) <- 1:12 # Assign animal IDs
+
+# 5. Calculate the G matrix (Genomic Relationship Matrix)
+#    We now pass BOTH M_all and the p_freqs vector
+G <- calculate_G_vanraden(M = M_all, p_freqs = p_freqs)
+colnames(G) <- 1:12
+rownames(G) <- 1:12
+
+print("Full G Matrix (rounded to 2 decimals):")
+print(round(G,2))
+
+```
+
+## Part 4: Analyze & Visualize Mendelian Sampling
+
+We now have two matrices:
+
+-   `A`: The expected relationships (all sibs = 0.5)
+
+-   `G`: The realized relationships (calculated from our 2,000 markers)
+
+Let's extract the relationships *among the 10 sibs* from both matrices and compare them.
+
+```{r}
+# 1. Extract the relationship matrices for ONLY the 10 sibs
+#    These are animals 3 through 12
+sibs_A <- A[3:12, 3:12]
+sibs_G <- G[3:12, 3:12]
+
+# 2. Get the off-diagonal values for each matrix
+#    These are the relationships *between* individuals
+#    We use upper.tri() to get each pair only once
+sibs_A_offdiag <- sibs_A[upper.tri(sibs_A)]
+sibs_G_offdiag <- sibs_G[upper.tri(sibs_G)]
+
+# 3. Analyze the results
+print("--- Summary of EXPECTED relationships (A) between sibs ---")
+summary(sibs_A_offdiag)
+
+print("--- Summary of REALIZED relationships (G) between sibs ---")
+summary(sibs_G_offdiag)
+```
+
+Look at that! The `sibs_A` summary shows every pair is exactly 0.5. But the `sibs_G` summary shows a **distribution** of values centered around 0.5. Some sibs share as little as 45.4% of their alleles, and some share as much as 54.3%.
+
+Let's visualize this distribution.
+
+```{r}
+# 4. Plot the histogram
+hist(sibs_G_offdiag, 
+     col = "lightblue", 
+     border = "white",
+     main = "Histogram of Genomic Relationships (G) Between Full-Sibs",
+     xlab = "Genomic Relationship (Gij)",
+     ylab = "Frequency (Number of Pairs)",
+     breaks = 20)
+
+# Add a red line for the expected pedigree relationship (A)
+abline(v = 0.5, col = "red", lwd = 3, lty = 2)
+legend("topright", 
+       legend = "Expected Relationship (A=0.5)", 
+       col = "red", lty = 2, lwd = 3, bty = "n")
+
+```
+
+This plot is the key takeaway. It clearly shows **Mendelian Sampling** in action. The *expected* relationship is 0.5 (the red line), but the *realized* relationships form a normal distribution around that expectation.
+
+## Discussion Questions
+
+1.  Look at the two `summary()` outputs. Why is one a single, constant value and the other a distribution?
+
+2.  What does the red dotted line on the plot represent? Why is the blue histogram centered on it?
+
+3.  What do you think would happen to the spread (the width) of the blue histogram if we used 50,000 markers instead of 2,000? What if we only used 50 markers?
+
+4.  How does this exercise explain why some full-siblings look very similar to each other, while other full-siblings look quite different?
