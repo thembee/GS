@@ -30,7 +30,7 @@ cat("--- Libraries loaded ---\n")
 # We will read the pedigree file directly from the GitHub URL.
 # The format is: Animal, Sire, Dam
 
-ped_url <- "https://raw.githubusercontent.com/thembee/GS/refs/heads/main/pedigree.txt"
+ped_url <- "https://raw.githubusercontent.com/thembee/GS/refs/heads/main/relationships/pedigree.txt"
 ped_df <- read.table(ped_url, col.names = c("Animal", "Sire", "Dam"))
 
 cat(paste("Loaded pedigree for", nrow(ped_df), "animals.\n"))
@@ -55,7 +55,7 @@ cat(paste("Calculated full A matrix. Dimensions:",
 # The format is 0, 1, 2 (homozygous, heterozygous, homozygous).
 # Animal IDs are the row names.
 
-geno_url <- "https://raw.githubusercontent.com/thembee/GS/refs/heads/main/genotypes.txt"
+geno_url <- "https://raw.githubusercontent.com/thembee/GS/refs/heads/main/relationships/genotypes.txt"
 
 # 'header=TRUE' (SNPs are headers), 'row.names=1' (Animal IDs are row names)
 geno_df_012 <- read.table(geno_url, header = TRUE, row.names = 1, check.names = FALSE)
