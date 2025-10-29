@@ -28,8 +28,8 @@ library(tidyverse)
 
 # Define the URLs for the data (as strings)
 # (Fixed the URLs to be plain strings)
-url_A <- "https://raw.githubusercontent.com/thembee/GS/refs/heads/main/A.txt"
-url_G <- "https://raw.githubusercontent.com/thembee/GS/refs/heads/main/G.txt"
+url_A <- "https://raw.githubusercontent.com/thembee/GS/refs/heads/main/relationships/A.txt"
+url_G <- "https://raw.githubusercontent.com/thembee/GS/refs/heads/main/relationships/G.txt"
 
 # Read the text files into data frames
 # header = FALSE tells R the first row is *not* a header
