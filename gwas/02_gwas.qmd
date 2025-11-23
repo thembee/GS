@@ -1,0 +1,92 @@
+---
+title: "GWAS"
+format: html
+editor: visual
+---
+
+## Exercise: Visualizing GWAS Results with `qqman`
+
+### Objective
+
+The goal of this exercise is to learn how to visualize Genome-Wide Association Study (GWAS) results using the R package `qqman`. You will use `tidyverse` tools to load and format a data file (`ch4_assoc.txt`) and apply your `qqman` knowledge to create and interpret Manhattan and Q-Q plots.
+
+
+1.  **Load the package:**
+
+```{r}
+library(qqman) 
+```
+
+
+
+### Analyzing Your `ch4_assoc.txt` Data
+
+Now, let's apply what you've learned. This part is trickier: the `ch4_assoc.txt` file has no header, so you must load it correctly and then use `tidyverse` functions to format it.
+
+#### Step 1: Load and Inspect the Data
+
+1.  **Load the `tidyverse`:** This collection includes `dplyr`, which we will use.
+
+```{r}
+library(tidyverse) 
+```
+
+2.  **Load the data:** Since the file has no header row, you must tell the `read_table()` function.
+
+```{r}
+gwas_data <- ......... 
+```
+
+3.  **Inspect the data:** Look at the first few rows and the column names.
+
+```{r}
+head(gwas_data) 
+```
+
+
+
+#### Step 2: Create the Manhattan Plot
+
+Now that your data is correctly formatted, this part is easy.
+
+1.  **Generate the plot:**
+
+```{r}
+
+```
+
+2.  **Customize the plot:** Add a title and adjust the significance line with the significance treshold of -log10(5e-8).
+
+```{r}
+
+```
+
+#### Step 3: Create the Q-Q Plot
+
+A Q-Q plot helps us check for p-value inflation, which the random effects in your GBLUP model were designed to control.
+
+1.  **Generate the plot:** The `qq()` function only needs the vector of p-values from your *formatted* data.
+
+```{r}
+
+```
+
+### Part 3: Questions for Analysis (Your Deliverables)
+
+Please answer the following questions based on the plots you generated.
+
+1.  **Manhattan Plot Analysis:**
+
+-   Look at your Manhattan plot. Are there any clear "towers" (groups of SNPs) that cross the red genome-wide significance line?
+
+-   If yes, on which chromosome(s) are the most significant signals located?
+
+2.  **Bonus Challenge (Highlighting with `dplyr`):**
+
+-   The `manhattan()` function has an `highlight` argument. Check the tutorial (`vignette("qqman")`) to see how it works.
+
+-   Using `dplyr` functions, find the `SNP` values (the "names") of the top 3 most significant SNPs.
+
+-   **Hint:** Use the `arrange()` function on your `gwas_formatted` data frame to sort by `P`, then use `slice_head()` or `head()` to see the top rows.
+
+-   Create a **new** Manhattan plot, using the `highlight` argument to label these top 3 SNPs.

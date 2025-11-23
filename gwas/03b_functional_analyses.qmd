@@ -1,0 +1,245 @@
+---
+title: "Tutorial: From GWAS Hits to Biological Function in Bos taurus"
+format: html
+---
+
+## Objective
+
+In this exercise, you will perform a complete post-GWAS analysis pipeline. You will start with raw association statistics, visualize the results, identify specific genomic regions of interest, find the genes located in those regions, and finally determine if those genes share common biological functions (Gene Ontology).
+
+## Prerequisites
+
+1.  Installation Script: Ensure you have run the separate install_packages.R script provided by the instructor.
+2.  Data: Ensure the file ch4_assoc.txt is in your working directory.
+3.  Internet: You need an active internet connection for the biomaRt and clusterProfiler steps.
+
+## Step 1: Setup and Data Loading
+
+First, we load the necessary libraries. We use tidyverse for data manipulation, qqman for visualization, and biomaRt to talk to genomic databases.
+
+```{r}
+# Load libraries
+library(tidyverse) 
+library(biomaRt)
+library(qqman)
+```
+
+```{r}
+# Load the GWAS association results
+# read_table handles whitespace-separated files automatically
+gwas_data <- read_table("ch4_assoc.txt")
+
+# Inspect the top of the file to ensure columns (SNP, CHR, BP, P) are present
+head(gwas_data)
+```
+
+## Step 2: Visualization (The Manhattan Plot)
+
+A Manhattan plot visualizes the P-values of the entire chromosome. We will set two thresholds: Significant ($5 \times 10^{-8}$): The standard gold-standard for GWAS. Suggestive/Lead ($1 \times 10^{-5}$): A lower threshold often used to identify regions that don't quite cross the "gold standard" line but are worth investigating.
+
+```{r}
+# Define statistical thresholds
+# We convert P-values to -log10 scale because that is how they are plotted
+threshold <- 5e-8
+lead_tresh <- -log10(1e-05)       # The "Suggestive" line (lower)
+significant_tresh <- -log10(5e-08) # The "Significant" line (higher)
+
+```
+
+```{r}
+
+# Generate the plot
+qqman::manhattan(gwas_data, 
+                 main = "Manhattan Plot", 
+                 ylim = c(0, 10), 
+                 cex = 0.6, 
+                 cex.axis = 0.9,
+                 col = c("blue4", "orange3")) # Alternating colors for chromosomes (if multiple)
+```
+
+## Step 3: Defining Regions of Interest
+
+Now we need to filter the data. In this specific analysis, we are interested in **suggestive "Lead" SNPs**. These are SNPs that are significant ($P < 10^{-5}$), but typically we filter to isolate specific bands of significance.
+
+*Note: The code below creates a +/- 50kb window around these SNPs to search for genes.*
+
+```{r}
+# 1. Identify "Lead" SNPs
+# We are filtering for SNPs that passed the suggestive threshold (1e-5)
+# but are below the genome-wide significant threshold (5e-8).
+lead_snp <- gwas_data %>%
+  filter(-log10(P) > lead_tresh, -log10(P) <= significant_tresh)
+
+# 2. Define the Search Window
+window_size <- 50000 # 50kb upstream and downstream
+
+significant_snps_regions <- lead_snp %>%
+  mutate(
+    start_pos = BP - window_size,
+    end_pos   = BP + window_size,
+    
+    # Safety check: Genomic positions cannot be negative!
+    start_pos = if_else(start_pos < 1, 1, start_pos)
+  )
+
+# Inspect the regions we are about to query
+head(significant_snps_regions)
+```
+
+## Step 4: Gene Annotation (Connecting to Ensembl)
+
+We now have the coordinates (Where is the SNP?), but we need the biology (What gene is there?). We will use biomaRt to query the Ensembl database for Cow (Bos taurus) genes.
+
+```{r}
+# 1. Connect to the Ensembl database
+# We use the 'genes' mart to look for gene features
+mart <- biomaRt::useEnsembl(biomart = "genes")
+
+# 2. Select the COW dataset
+# It is critical to use 'btaurus_gene_ensembl' and not the human dataset
+mart <- biomaRt::useDataset(dataset = "btaurus_gene_ensembl", mart = mart)
+```
+
+Now we run the query loop. This code iterates through every region you defined in Step 3, queries the database, and saves any genes found.
+
+Note: This loop includes error handling to skip regions where no genes are found, preventing the code from crashing.
+
+```{r}
+# Initialize an empty list to store results
+all_genes_list <- list()
+
+for (i in 1:nrow(significant_snps_regions)) {
+  
+  # Get coordinates for the current SNP region
+  current_chr   <- significant_snps_regions$CHR[i]
+  current_start <- significant_snps_regions$start_pos[i]
+  current_end   <- significant_snps_regions$end_pos[i]
+  
+  print(paste("Querying region", i, ":", current_chr, ":", current_start, "-", current_end))
+  
+  # Query BiomaRt
+  genes_in_region <- biomaRt::getBM(
+    attributes = c('external_gene_name', 'entrezgene_id', 'chromosome_name', 
+                   'start_position', 'end_position', 'description'),
+    filters = c('chromosome_name', 'start', 'end'),
+    values = list(chromosome_name = current_chr,
+                  start           = current_start,
+                  end             = current_end),
+    mart = mart
+  )
+  
+  # Check if genes were found
+  if (nrow(genes_in_region) > 0) {
+    
+    # Force all columns to character type (prevents "Integer vs Character" errors later)
+    genes_in_region$external_gene_name <- as.character(genes_in_region$external_gene_name)
+    genes_in_region$entrezgene_id      <- as.character(genes_in_region$entrezgene_id)
+    genes_in_region$chromosome_name    <- as.character(genes_in_region$chromosome_name)
+    genes_in_region$description        <- as.character(genes_in_region$description)
+    
+    # Save result to the list
+    all_genes_list[[length(all_genes_list) + 1]] <- genes_in_region
+    
+  } else {
+    print("  -> No genes found in this region. Skipping.")
+  }
+}
+
+# Combine all list elements into one final dataframe
+all_genes_df <- bind_rows(all_genes_list)
+
+print("Gene mapping complete!")
+head(all_genes_df)
+```
+
+## Step 5: Functional Analysis (Gene Ontology)
+
+We have a list of genes, but we want to know what they do. We use Gene Ontology (GO) Enrichment to see if these genes are statistically over-represented in specific biological processes (e.g., "Immune Response" or "Lipid Metabolism").
+
+```{r}
+library(clusterProfiler)
+library(org.Bt.eg.db) # The Annotation Database for Bos taurus
+
+# 1. Prepare the Gene List
+# We need 'Entrez IDs' for this analysis. We also remove NAs and duplicates.
+all_entrez_ids <- all_genes_df$entrezgene_id
+unique_entrez_ids <- unique(all_entrez_ids)
+candidate_gene_ids <- unique_entrez_ids[!is.na(unique_entrez_ids)]
+candidate_gene_ids <- as.character(candidate_gene_ids)
+
+print(paste("Analyzing", length(candidate_gene_ids), "unique genes."))
+
+# 2. Run the GO Enrichment
+# ont = "BP" stands for Biological Process
+go_results <- clusterProfiler::enrichGO(
+  gene          = candidate_gene_ids,
+  OrgDb         = org.Bt.eg.db,
+  keyType       = 'ENTREZID',
+  ont           = "BP",
+  pAdjustMethod = "BH",    # Benjamini-Hochberg correction for multiple testing
+  pvalueCutoff  = 0.05,
+  qvalueCutoff  = 0.1
+)
+
+# Convert results to a table
+go_results_df <- as.data.frame(go_results)
+
+# View top biological processes
+head(go_results_df)
+```
+
+## Step 6: Visualizing Enrichment
+
+Finally, we use a Dot Plot to display the most significant biological processes.
+
+Size of dot: Number of genes found in that pathway.
+
+Color of dot: Significance (Red is more significant than Blue).
+
+```{r}
+library(enrichplot)
+
+# Plot the top 20 most significant GO terms
+dotplot(go_results, showCategory = 20) + 
+  ggtitle("GO Enrichment")
+```
+
+Here is how to read the four dimensions of this plot:
+
+### 1. The Y-Axis: The Biological Processes
+
+The labels on the left (e.g., *"positive regulation of JNK cascade"*, *"canonical Wnt signaling pathway"*) are the specific biological functions associated with your genes.
+
+-   **Observation:** Notice a theme? Almost all terms are related to **signaling pathways** (JNK, Wnt, MAPK). This suggests your candidate gene(s) plays a regulatory role in how cells communicate.
+
+### 2. The Color: Statistical Significance (P.adjust)
+
+The color of the dot represents how statistically significant the finding is.
+
+-   **Scale:** Look at the legend on the right. **Red** is a lower p-value (approx 0.0125), which means **more significant**. **Blue** is a higher p-value (approx 0.0200), which is less significant.
+
+-   **Result:** The terms at the top (JNK cascade) are the most statistically confident results.
+
+### 3. The Size: Gene Count
+
+The size of the dot represents the **Count**—the number of genes from your input list that were found in that specific pathway.
+
+-   **Observation:** Look at the "Count" legend on the right. The circle represents **1**. All the dots in the plot are the same size.
+
+-   **Meaning:** In every single one of these pathways, the software found exactly **1 gene** from your input list.
+
+### 4. The X-Axis: GeneRatio
+
+This is the ratio of your input genes found in the term divided by the total number of your input genes that have any annotation.
+
+-   **Observation:** All dots are at **1.000**.
+
+-   **The "Hidden" Story:** A GeneRatio of 1.0 usually happens when you have a **very small list of genes** (perhaps only 1 or 2 valid genes).
+
+    -   If you submitted 1 gene, and that 1 gene is involved in the "JNK cascade," the ratio is 1/1 = 100% (1.0).
+
+### Summary Interpretation
+
+This plot suggests that **your significant SNP list likely pointed to a SINGLE key gene** (or a very small group) that is highly active in **cell signaling**.
+
+This one gene is a "multi-tasker": it appears to be involved in the **JNK**, **Wnt**, and **MAPK** pathways simultaneously. This makes that single gene a very strong candidate for whatever trait you are studying, as these are major pathways for cell growth and regulation.

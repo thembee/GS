@@ -1,0 +1,42 @@
+---
+title: "GWAS"
+format: html
+editor: visual
+---
+
+## Exercise: Visualizing GWAS Results with `qqman`
+
+### Objective
+
+The goal of this exercise is to learn how to visualize Genome-Wide Association Study (GWAS) results using the R package `qqman`. You will first familiarize yourself with the package's tutorial. Then, you will use `tidyverse` tools to load and format a "headerless" data file (`chrsnp_pval`) and apply your `qqman` knowledge to create and interpret Manhattan and Q-Q plots.
+
+-   The R packages `qqman` and `tidyverse` installed. If you don't have them, run:
+
+```{r}
+install.packages("qqman") install.packages("tidyverse") 
+```
+
+### Part 1: The Tutorial Warm-Up
+
+Before analyzing our own data, let's learn how `qqman` works.
+
+1.  **Load the package:**
+
+```{r}
+library(qqman) 
+```
+
+2.  **Open the Tutorial (Vignette):** Run this command to open the official tutorial:
+
+```{r}
+vignette("qqman") 
+```
+
+3.  **Review and Run:**
+
+    -   Read through the vignette, paying close attention to the **`manhattan()`** and **`qq()`** functions.
+
+    -   Run the example code snippets in your R console using the built-in `gwasResults` dataset.
+
+    -   **Crucially, identify the four column names `manhattan()` requires.**
+
