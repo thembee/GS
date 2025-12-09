@@ -58,7 +58,7 @@ As expected, the pedigree tells us that sibs 3 and 4 share 50% of their genes *o
 
 ## Part 2: Function to Calculate G (Realized)
 
-Next, we need a function to calculate the \$G\$ matrix. This is based on VanRaden (2008), Method 1. It takes a genotype matrix \$M\$ (coded -1, 0, 1) and returns the genomic relationship matrix.
+Next, we need a function to calculate the \$G\$ matrix. This is based on your script and corrected according to VanRaden (2008), Method 1. It takes a genotype matrix \$M\$ (coded -1, 0, 1) and returns the genomic relationship matrix.
 
 ```{r}
 # This function calculates G using VanRaden (2008), Method 1
